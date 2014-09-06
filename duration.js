@@ -62,17 +62,37 @@
         return typeof(s) == 'number' ? s : units[s]['ref'];
     }
 
+    function decimalRound(v, x) {
+        if(!x) return Math.round(v);
+        v = v.toString().split('e');
+        v = Math.round(+(v[0] + 'e' + (v[1] ? (+v[1] + x) : x)));
+        v = v.toString().split('e');
+        return +(v[0] + 'e' + (v[1] ? (+v[1] - x) : -x));
+    }
+
     /**
      * Class for handling duration conversions
      *
      * @class Duration
+     * @constructor
+     * @param {String} b Base unit
+     * @param {Object} opts Options
      */
-    function Duration(b) {
+    function Duration(b, opts) {
         this._base = units[b || 'hr']['ref'];
         this._abbr = false;
         this._value = 0;
         this._unit = 3;
         this._thresh = 0.05;
+
+        /**
+         * Decimal precision
+         *
+         * @property precision
+         * @type Number
+         * @default 2
+         */
+        this.precision = 'precision' in opts ? opts.precision : 2;
     }
 
     /**
@@ -83,9 +103,11 @@
      * @param {Number} n Number to convert
      * @param {String} from Unit to convert from
      * @param {String} to Unit to convert to
-     * @return {Number} Converted duration
+     * @param {Number} precision Decimal precision
+     * @return {Object} Converted duration in form { duration, unit }
      */
-    Duration.convert = function(n, from, to) {
+    Duration.convert = function(n, from, to, precision) {
+        precision = precision || 2;
         var cu = typeof(from) == 'string' ? units[from]['ref'] : from;
         var du = typeof(to) == 'string' ? units[to]['ref'] : to;
 
@@ -101,7 +123,34 @@
             }
         }
 
-        return n;
+        return { duration: decimalRound(n, precision), unit: to };
+    };
+
+    /**
+     * Convert duration to most concise representation
+     *
+     * @method concise
+     * @static
+     * @param {Number} n Number to convert
+     * @param {String} u Unit to convert from
+     * @return {Object} Converted duration in form { duration, unit }
+     */
+    Duration.concise = function(n, u) {
+        var ref = units[u]['ref'];
+        var max = conversions[ref].next;
+        if(n < 1) {
+            if(ref <= 0) return { duration: n, unit: u }
+
+            var prev = Duration.convert(n, u, conversions[ref - 1].unit);
+            return Duration.concise(prev.duration, prev.unit);
+        } else if(n >= max) {
+            if(ref >= conversions.length - 1) return { duration: n, unit: u };
+
+            var next = Duration.convert(n, u, conversions[ref + 1].unit);
+            return Duration.concise(next.duration, next.unit);
+        }
+
+        return { duration: n, unit: u };
     };
 
     /**
@@ -109,11 +158,11 @@
      *
      * @method to
      * @chainable
-     * @param {Number} n Number to convert
+     * @param {Number} n Number to convert (base unit)
      * @param {String} u Unit to convert to
      */
     Duration.prototype.to = function(n, u) {
-        this._value = Duration.convert(n, this._base, u);
+        this._value = (Duration.convert(n, this._base, u, this.precision)).duration;
         this._unit = unitNum(u);
         return this;
     }
@@ -126,7 +175,6 @@
      * @param {Number} n Number to convert
      */
     Duration.prototype.concise = function(n) {
-
     }
 
     /**
