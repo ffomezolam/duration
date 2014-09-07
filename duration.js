@@ -1,8 +1,7 @@
 /**
- * @module duration
+ * Exports a class for converting and expressing durations of time
  *
- * TODO: The point of this is to convert a number from a unit automatically
- * into the unit that can most concisely represent that duration, so add that
+ * @module duration
  */
 (function(name, context, definition) {
     if(typeof module !== 'undefined' && module.exports) module.exports = definition();
@@ -62,6 +61,7 @@
         return typeof(s) == 'number' ? s : units[s]['ref'];
     }
 
+    // utility function for decimal precision rounding
     function decimalRound(v, x) {
         if(!x) return Math.round(v);
         v = v.toString().split('e');
@@ -92,7 +92,7 @@
          * @type Number
          * @default 2
          */
-        this.precision = 'precision' in opts ? opts.precision : 2;
+        this.precision = opts && 'precision' in opts ? opts.precision : 2;
     }
 
     /**
@@ -124,7 +124,7 @@
         }
 
         return { duration: decimalRound(n, precision), unit: to };
-    };
+    }
 
     /**
      * Convert duration to most concise representation
@@ -133,25 +133,26 @@
      * @static
      * @param {Number} n Number to convert
      * @param {String} u Unit to convert from
+     * @param {Number} p Decimal Precision
      * @return {Object} Converted duration in form { duration, unit }
      */
-    Duration.concise = function(n, u) {
+    Duration.concise = function(n, u, p) {
         var ref = units[u]['ref'];
         var max = conversions[ref].next;
         if(n < 1) {
             if(ref <= 0) return { duration: n, unit: u }
 
-            var prev = Duration.convert(n, u, conversions[ref - 1].unit);
+            var prev = Duration.convert(n, u, conversions[ref - 1].unit, p);
             return Duration.concise(prev.duration, prev.unit);
         } else if(n >= max) {
             if(ref >= conversions.length - 1) return { duration: n, unit: u };
 
-            var next = Duration.convert(n, u, conversions[ref + 1].unit);
+            var next = Duration.convert(n, u, conversions[ref + 1].unit, p);
             return Duration.concise(next.duration, next.unit);
         }
 
         return { duration: n, unit: u };
-    };
+    }
 
     /**
      * Convert duration to units
@@ -162,8 +163,9 @@
      * @param {String} u Unit to convert to
      */
     Duration.prototype.to = function(n, u) {
-        this._value = (Duration.convert(n, this._base, u, this.precision)).duration;
-        this._unit = unitNum(u);
+        var r = Duration.convert(n, this._base, u, this.precision);
+        this._value = r.duration;
+        this._unit = r.unit;
         return this;
     }
 
@@ -175,6 +177,10 @@
      * @param {Number} n Number to convert
      */
     Duration.prototype.concise = function(n) {
+        var r = Duration.concise(n, this._base, this.precision);
+        this._value = r.duration;
+        this._unit = r.unit;
+        return this;
     }
 
     /**
@@ -194,9 +200,10 @@
      *
      * @method abbr
      * @chainable
-     * @param {Boolean} o Abbreviate flag
+     * @param {Boolean} [o] Abbreviate flag
      */
     Duration.prototype.abbr = function(o) {
+        if(typeof o == 'undefined') o = this._abbr;
         this._abbr = !!o;
         return this;
     }
@@ -205,22 +212,46 @@
      * Get duration
      *
      * @method get
-     * @param {Boolean} u Whether to return string with units
-     * @return {Number|String} Duration
+     * @return {Object} Duration in form { duration, unit }
      */
-    Duration.prototype.get = function(u) {
-        return u ? makeString(this._value, this._unit, this._abbr) : this._value;
+    Duration.prototype.get = function() {
+        return { duration: this._value, unit: this._unit };
     }
 
     /**
-     * Get most recent units
+     * Get most recent unit
      *
-     * @method units
+     * @method unit
      * @return {String} Unit name
      */
-    Duration.prototype.units = function() {
+    Duration.prototype.unit = function() {
         var u = units[this._unit];
         return this._abbr ? u['abbr'] : u['full'];
+    }
+
+    /**
+     * Get most recent duration
+     *
+     * @method duration
+     * @return {Number} Duration
+     */
+    Duration.prototype.duration = function() {
+        return this._value;
+    }
+
+    /**
+     * Get duration as string
+     *
+     * @method toString
+     * @param {String} [sep] Separator between value and unit
+     * @return {String} Duration as string
+     */
+    Duration.prototype.toString = function(sep) {
+        sep = sep || " ";
+        var v = this._value;
+        var u = units[this._unit];
+        u = this._abbr ? u['abbr'] : u['full'];
+        return v + sep + u;
     }
 
     return Duration;
