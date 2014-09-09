@@ -75,11 +75,11 @@
      *
      * @class Duration
      * @constructor
-     * @param {String} b Base unit
-     * @param {Object} opts Options
+     * @param {String} [b] Base unit
+     * @param {Object} [opts] Options
      */
     function Duration(b, opts) {
-        this._base = units[b || 'hr']['ref'];
+        this._base = b in units ? b : 'hr';
         this._abbr = false;
         this._value = 0;
         this._unit = 3;
@@ -139,6 +139,7 @@
     Duration.concise = function(n, u, p) {
         var ref = units[u]['ref'];
         var max = conversions[ref].next;
+
         if(n < 1) {
             if(ref <= 0) return { duration: n, unit: u }
 
@@ -203,7 +204,7 @@
      * @param {Boolean} [o] Abbreviate flag
      */
     Duration.prototype.abbr = function(o) {
-        if(typeof o == 'undefined') o = this._abbr;
+        if(typeof o == 'undefined') o = !this._abbr;
         this._abbr = !!o;
         return this;
     }
@@ -247,11 +248,11 @@
      * @return {String} Duration as string
      */
     Duration.prototype.toString = function(sep) {
-        sep = sep || " ";
+        sep = typeof sep == 'string' ? sep : " ";
         var v = this._value;
         var u = units[this._unit];
         u = this._abbr ? u['abbr'] : u['full'];
-        return v + sep + u;
+        return v + sep + pluralize(u);
     }
 
     return Duration;
