@@ -28,7 +28,7 @@
         yr: yr
     }
 
-    var conversions = [
+    var unitRefs = [
         { unit: 'ms',   'next': 1000 },
         { unit: 's',    'next': 60 },
         { unit: 'min',  'next': 60 },
@@ -39,25 +39,12 @@
         { unit: 'yr',   'next': null }
     ];
 
-    var globals = {
-        value: 0,
-        unit: 3
-    };
-
     // pluralize appropriate strings
     function pluralize(s) {
         return s.substr(-1) == 's' ? s : s + 's';
     }
 
-    // format as string
-    function makeString(n, u, a) {
-        // unit is string
-        u = typeof(u) == 'number' ? conversions[u]['unit'] : u;
-        var name = a ? units[u]['abbr'] : ' ' + units[u]['full'];
-        return n + (Math.abs(n) == 1 ? name : pluralize(name));
-    }
-
-    function unitNum(s) {
+    function unitRef(s) {
         return typeof(s) == 'number' ? s : units[s]['ref'];
     }
 
@@ -70,29 +57,26 @@
         return +(v[0] + 'e' + (v[1] ? (+v[1] - x) : -x));
     }
 
+    var options = {
+        abbr: true,
+        precision: 2
+    };
+
     /**
-     * Class for handling duration conversions
+     * Class for handling duration unitRefs
      *
      * @class Duration
      * @constructor
-     * @param {String} [b] Base unit
-     * @param {Object} [opts] Options
+     * @param {Number} [n] Value (default 2)
+     * @param {String} [b] Unit (default hr)
+     * @param {Object} [opts] Options: precision (number), abbr (boolean)
      */
-    function Duration(b, opts) {
-        this._base = b in units ? b : 'hr';
-        this._abbr = false;
-        this._value = 0;
-        this._unit = 3;
-        this._thresh = 0.05;
+    function Duration(n, b, opts) {
+        this._duration = typeof n == 'number' ? n : 1;
+        this._unit = b in units ? b : 'hr';
 
-        /**
-         * Decimal precision
-         *
-         * @property precision
-         * @type Number
-         * @default 2
-         */
-        this.precision = opts && 'precision' in opts ? opts.precision : 2;
+        this._precision = (opts && 'precision' in opts && typeof opts.precision == 'number') ? opts.precision : options.precision;
+        this._abbr = (opts && 'abbr' in opts && typeof opts.abbr == 'boolean') ? opts.abbr : options.abbr;
     }
 
     /**
@@ -104,26 +88,26 @@
      * @param {String} from Unit to convert from
      * @param {String} to Unit to convert to
      * @param {Number} precision Decimal precision
-     * @return {Object} Converted duration in form { duration, unit }
+     * @return {Duration} Converted duration as Duration instance
      */
     Duration.convert = function(n, from, to, precision) {
         precision = precision || 2;
-        var cu = typeof(from) == 'string' ? units[from]['ref'] : from;
-        var du = typeof(to) == 'string' ? units[to]['ref'] : to;
+        var cu = (typeof(from) == 'string' && from in units) ? unitRef(from) : unitRef('hr');
+        var du = (typeof(to) == 'string' && to in units) ? unitRef(to) : unitRef('hr');
 
         if(du < cu) {
             while(du < cu) {
                 cu--;
-                n *= conversions[cu]['next'];
+                n *= unitRefs[cu]['next'];
             }
         } else if(du > cu) {
             while(du > cu) {
-                n /= conversions[cu]['next'];
+                n /= unitRefs[cu]['next'];
                 cu++;
             }
         }
 
-        return { duration: decimalRound(n, precision), unit: to };
+        return new Duration(n, unitRefs[du]['unit'], { precision: precision });
     }
 
     /**
@@ -134,110 +118,89 @@
      * @param {Number} n Number to convert
      * @param {String} u Unit to convert from
      * @param {Number} p Decimal Precision
-     * @return {Object} Converted duration in form { duration, unit }
+     * @return {Duration} Converted duration as Duration instance
      */
     Duration.concise = function(n, u, p) {
-        var ref = units[u]['ref'];
-        var max = conversions[ref].next;
+        var ref = (typeof(u) == 'string' && u in units) ? unitRef(u) : unitRef('hr');
+        var max = unitRefs[ref].next;
 
         if(n < 1) {
-            if(ref <= 0) return { duration: n, unit: u }
+            if(ref <= 0) return new Duration(n, u, { precision: p });
 
-            var prev = Duration.convert(n, u, conversions[ref - 1].unit, p);
-            return Duration.concise(prev.duration, prev.unit);
+            var prev = Duration.convert(n, u, unitRefs[ref - 1].unit, p);
+            return Duration.concise(prev.duration(), prev.unit(), p);
         } else if(n >= max) {
-            if(ref >= conversions.length - 1) return { duration: n, unit: u };
+            if(ref >= unitRefs.length - 1) return new Duration(n, u, { precision: p });
 
-            var next = Duration.convert(n, u, conversions[ref + 1].unit, p);
-            return Duration.concise(next.duration, next.unit);
+            var next = Duration.convert(n, u, unitRefs[ref + 1].unit, p);
+            return Duration.concise(next.duration(), next.unit());
         }
 
-        return { duration: n, unit: u };
+        return new Duration(n, u, { precision: p });
     }
 
     /**
      * Convert duration to units
      *
      * @method to
-     * @chainable
-     * @param {Number} n Number to convert (base unit)
      * @param {String} u Unit to convert to
+     * @return {Duration} Duration object with converted value and unit
      */
-    Duration.prototype.to = function(n, u) {
-        var r = Duration.convert(n, this._base, u, this.precision);
-        this._value = r.duration;
-        this._unit = r.unit;
-        return this;
+    Duration.prototype.to = function(u) {
+        return Duration.convert(this._duration, this._unit, u, this._precision).abbr(this._abbr);
     }
 
     /**
      * Convert duration to most concise representation
      *
      * @method concise
-     * @chainable
-     * @param {Number} n Number to convert
+     * @return {Duration} Duration object with converted value and unit
      */
-    Duration.prototype.concise = function(n) {
-        var r = Duration.concise(n, this._base, this.precision);
-        this._value = r.duration;
-        this._unit = r.unit;
+    Duration.prototype.concise = function() {
+        return Duration.concise(this._duration, this._unit, this._precision).abbr(this._abbr);
+    }
+
+    /**
+     * Set or get base unit
+     *
+     * @method unit
+     * @chainable
+     * @param {String} [s] Unit to set
+     * @return {Duration|String} Chainable object if setter, unit if getter
+     */
+    Duration.prototype.unit = function(s) {
+        if(!s) return this._unit;
+        if(s in units) this._unit = s;
         return this;
     }
 
     /**
-     * Set base unit
-     * 
-     * @method base
+     * Get or set duration
+     *
+     * @method duration
      * @chainable
-     * @param {String} s New base unit
+     * @param {Number} [d] Duration to set
+     * @return {Duration|Number} Chainable object if setter, duration if getter
      */
-    Duration.prototype.base = function(s) {
-        if(s in units) this._base = s;
+    Duration.prototype.duration = function(d) {
+        if(typeof d == 'undefined') return this._duration;
+        if(typeof d == 'number') this._duration = d;
         return this;
     }
 
     /**
-     * Set abbreviation
+     * Set or get abbreviation option
      *
      * @method abbr
      * @chainable
      * @param {Boolean} [o] Abbreviate flag
+     * @return {Duration|Boolean} Chainable object if setter, abbreviation
+     * option if getter
      */
     Duration.prototype.abbr = function(o) {
-        if(typeof o == 'undefined') o = !this._abbr;
+        if(typeof o == 'undefined') return this._abbr;
         this._abbr = !!o;
         return this;
-    }
-
-    /**
-     * Get duration
-     *
-     * @method get
-     * @return {Object} Duration in form { duration, unit }
-     */
-    Duration.prototype.get = function() {
-        return { duration: this._value, unit: this._unit };
-    }
-
-    /**
-     * Get most recent unit
-     *
-     * @method unit
-     * @return {String} Unit name
-     */
-    Duration.prototype.unit = function() {
-        var u = units[this._unit];
-        return this._abbr ? u['abbr'] : u['full'];
-    }
-
-    /**
-     * Get most recent duration
-     *
-     * @method duration
-     * @return {Number} Duration
-     */
-    Duration.prototype.duration = function() {
-        return this._value;
     }
 
     /**
@@ -249,10 +212,10 @@
      */
     Duration.prototype.toString = function(sep) {
         sep = typeof sep == 'string' ? sep : " ";
-        var v = this._value;
-        var u = units[this._unit];
+        var d = this._duration,
+            u = units[this._unit];
         u = this._abbr ? u['abbr'] : u['full'];
-        return v + sep + pluralize(u);
+        return d + sep + pluralize(u);
     }
 
     return Duration;
