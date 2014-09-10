@@ -63,7 +63,12 @@
     };
 
     /**
-     * Class for handling duration unitRefs
+     * Class for handling duration conversion
+     *
+     *      var d = new Duration(1, 'hr');
+     *      var o = d.to('min'); // convert to minutes - o is a Duration instance
+     *      console.log(o.duration()); // "60"
+     *      console.log(o.unit()); // "min"
      *
      * @class Duration
      * @constructor
@@ -148,6 +153,17 @@
      */
     Duration.prototype.to = function(u) {
         return Duration.convert(this._duration, this._unit, u, this._precision).abbr(this._abbr);
+    }
+
+    /**
+     * Alias for to()
+     *
+     * @method convert
+     * @param {String} u Unit to convert to
+     * @return {Duration} Duration object with converted value and unit
+     */
+    Duration.prototype.convert = function(u) {
+        return this.to(u);
     }
 
     /**
